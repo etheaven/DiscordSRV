@@ -48,9 +48,23 @@ public class DiscordChatListener extends ListenerAdapter {
 
     @Override
     public void onGuildMessageReceived(GuildMessageReceivedEvent event) {
-        // if message is from null author or self do not process
-        if (event.getMember() == null || DiscordUtil.getJda() == null || event.getAuthor().equals(DiscordUtil.getJda().getSelfUser()))
+        // if message is from null author
+        if (event.getMember() == null || DiscordUtil.getJda() == null)
             return;
+
+        // is equal to self
+        if (event.getAuthor().equals(DiscordUtil.getJda().getSelfUser()) == true){
+            String dcMess = event.getMessage().getContentStripped();
+            // does not start with "lp"
+            if (!dcMess.startsWith("lp") && !dcMess.startsWith("nick")){
+                return;
+            }
+            else{
+                if (customProcessComand(event, dcMess))
+                    DiscordUtil.sendMessage(event.getChannel(), "```\n"+ DiscordUtil.strip(dcMess) + "```\nsuccessfuly processsed custom command!:" + dcMess);
+                else DiscordUtil.sendMessage(event.getChannel(), "failed to process custom command!:" + dcMess);
+            }
+        }
 
         // canned responses
         for (Map.Entry<String, String> entry : DiscordSRV.getPlugin().getCannedResponses().entrySet()) {
@@ -305,6 +319,34 @@ public class DiscordChatListener extends ListenerAdapter {
                 DiscordUtil.deleteMessage(event.getMessage());
             }).start();
         }
+        return true;
+    }
+
+    
+    private boolean customProcessComand(GuildMessageReceivedEvent event, String message) {
+
+        String prefix = DiscordSRV.config().getString("DiscordChatChannelConsoleCommandPrefix");
+        String command = message.substring(prefix.length()).trim();
+
+        // log command to console log file, if this fails the command is not executed for safety reasons unless this is turned off
+        File logFile = DiscordSRV.getPlugin().getLogFile();
+        if (logFile != null) {
+            try {
+                FileUtils.writeStringToFile(
+                    logFile,
+                    "[" + TimeUtil.timeStamp() + " | ID " + event.getAuthor().getId() + "] " + event.getAuthor().getName() + ": " + event.getMessage().getContentRaw() + System.lineSeparator(),
+                    StandardCharsets.UTF_8,
+                    true
+                );
+            } catch (IOException e) {
+                DiscordSRV.error(LangUtil.InternalMessage.ERROR_LOGGING_CONSOLE_ACTION + " " + logFile.getAbsolutePath() + ": " + e.getMessage());
+                if (DiscordSRV.config().getBoolean("CancelConsoleCommandIfLoggingFailed")) return true;
+            }
+        }
+
+        // at this point, the user has permission to run commands at all and is able to run the requested command, so do it
+        Bukkit.getScheduler().runTask(DiscordSRV.getPlugin(), () -> Bukkit.getServer().dispatchCommand(new SingleCommandSender(event, Bukkit.getServer().getConsoleSender()), message));
+
         return true;
     }
 
